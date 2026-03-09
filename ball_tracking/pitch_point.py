@@ -10,7 +10,7 @@ def find_pitch_point(ball_path_points: list[tuple[int, int]]) -> tuple[int, int]
         next_y = ball_path_points[i + 1][1]
 
         # Look for a significant drop (e.g., >20 pixels) followed by a change in direction
-        if curr_y > prev_y and next_y < curr_y:
+        if curr_y >= prev_y and next_y <= curr_y:
             return ball_path_points[i]
 
     return False
