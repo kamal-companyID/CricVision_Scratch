@@ -1,7 +1,8 @@
 import cv2
-from src.detections import detect_all, draw_detections
-from src.ball_utils import build_static_ball_map, is_near_static
-from src.pitch_point import find_pitch_point
+from ball_tracking.detections import detect_all, draw_detections
+from ball_tracking.ball_utils import build_static_ball_map, is_near_static
+from ball_tracking.pitch_point import find_pitch_point
+from ball_tracking.impact_point import find_impact_point
 
 WARMUP_FRAMES = 15
 STATIC_THRESHOLD = 15.0
@@ -59,7 +60,7 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
                         ball_in_bat_points.append((cx, cy))
 
         annotated_frame = draw_detections(frame, detections)
-
+        
         if writer:
             writer.write(annotated_frame)
 
@@ -69,9 +70,12 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
         writer.release()
     cv2.destroyAllWindows()
 
+    pitch_point = find_pitch_point(ball_path_points)
+    impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points)
+
+    print(f"Impact point: {impact_point}")
     print(f"valid ball detections (after filtering static): {ball_path_points}")
     print(f"ball points inside bat bbox: {ball_in_bat_points}")
-    pitch_point = find_pitch_point(ball_path_points)
     print(f"Pitch point: {pitch_point}")
     print(f"Done — processed {frame_idx} frames.")
     return ball_path_points, ball_in_bat_points

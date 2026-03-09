@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from src.orchestrator import process_video
+from ball_tracking.orchestrator import process_video
 
 # Set input folder path here
 input_root = r"inputs"  # Change this to your input folder
