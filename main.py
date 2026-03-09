@@ -36,5 +36,5 @@ else:
         # Final output video path
         output_video_path = os.path.join(output_dir, f"{input_name}.mp4")
         
-        ball_path_points, ball_in_bat_points = process_video(input_path, output_video_path)
+        process_video(input_path, output_video_path)
         print(f"Output saved to: {output_video_path}")

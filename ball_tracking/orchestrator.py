@@ -42,7 +42,7 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
             centers = [(d['cx'], d['cy']) for d in detections['ball']]
             warmup_ball_centers.append(centers)
             if frame_idx == WARMUP_FRAMES - 1:
-                static_ball_map = build_static_ball_map(warmup_ball_centers)
+                static_ball_map = list(set(build_static_ball_map(warmup_ball_centers)))
         else:
             detections['ball'] = [
                 d for d in detections['ball']
@@ -78,4 +78,3 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     print(f"ball points inside bat bbox: {ball_in_bat_points}")
     print(f"Pitch point: {pitch_point}")
     print(f"Done — processed {frame_idx} frames.")
-    return ball_path_points, ball_in_bat_points
