@@ -20,18 +20,9 @@ def _first_direction_change(
             continue
         cos_a = max(-1.0, min(1.0, (v1[0]*v2[0] + v1[1]*v2[1]) / (mag1 * mag2)))
         if math.degrees(math.acos(cos_a)) >= threshold:
+            print(f"Direction change at (fulltoss) : {p1}")
             return p1
     return None
-
-
-def _index_in_path(path: list[tuple[int, int]], pt: tuple[int, int] | None) -> int:
-    """Return the index of *pt* in *path*, or -1 if not found / None."""
-    if pt is None:
-        return -1
-    try:
-        return path.index(pt)
-    except ValueError:
-        return -1
 
 
 def _pick_latest(
@@ -41,8 +32,8 @@ def _pick_latest(
 ) -> tuple[int, int] | bool:
     """Return whichever of *a* / *b* appears later in *path*.
     If only one is valid, return that.  If neither, return False."""
-    idx_a = _index_in_path(path, a)
-    idx_b = _index_in_path(path, b)
+    idx_a = path.index(a) if a is not None else -1
+    idx_b = path.index(b) if b is not None else -1
     if idx_a == -1 and idx_b == -1:
         return False
     if idx_a == -1:
@@ -101,6 +92,7 @@ def find_impact_point(ball_path_points: list[tuple[int, int]], pitch_point: tupl
             angle_deg = math.degrees(math.acos(cos_angle))
 
             if angle_deg >= ANGLE_THRESHOLD:
+                print("Direction change at: ", post_pitch[i])
                 return post_pitch[i]
 
     # Fallback: if no direction change detected, use first ball-in-bat point
