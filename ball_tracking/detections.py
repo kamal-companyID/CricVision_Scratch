@@ -27,7 +27,7 @@ def _run(inference_obj, frame, confidence: float) -> list[dict]:
     return detections
 
 
-def detect_ball(frame, confidence: float = 0.5) -> list[dict]:
+def detect_ball(frame, confidence: float = 0.65) -> list[dict]:
     if not DETECT_BALL:
         return []
     return _run(obj_ball, frame, confidence)

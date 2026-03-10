@@ -14,7 +14,7 @@ import numpy as np
 # ── Adaptive-scale config ─────────────────────────────────────────────────────
 DRAW_REF_SIZE  = 720        # reference dimension (px) — scale = 1.0 at this
 DRAW_SCALE_MIN = 0.4
-DRAW_SCALE_MAX = 2.5
+DRAW_SCALE_MAX = 1.5
 
 # ── Gradient endpoints (BGR) ──────────────────────────────────────────────────
 # Delivery: cyan → yellow       Bounce: yellow → magenta
@@ -23,7 +23,7 @@ GRAD_MID   = (0,   255, 255)    # yellow  (shared junction at pitch point)
 GRAD_END   = (255,   0, 255)    # magenta
 
 # ── Key-point colours (BGR) ───────────────────────────────────────────────────
-FIRST_POINT_COLOR  = (255, 80,   0)   # blue
+# FIRST_POINT_COLOR  = (255, 80,   0)   # blue
 PITCH_POINT_COLOR  = (0,  140, 255)   # orange
 IMPACT_POINT_COLOR = (0,    0, 255)   # red
 
@@ -142,9 +142,9 @@ def draw_ball_path(
     if bounce:
         frame = _draw_gradient_path(frame, bounce, GRAD_MID, GRAD_END)
 
-    if first_point:
-        _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
-                          'First' if show_labels else '')
+    # if first_point:
+    #     _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
+    #                       'First' if show_labels else '')
     if pitch_point:
         _draw_event_point(frame, pitch_point, PITCH_POINT_COLOR,
                           'Pitch' if show_labels else '')
@@ -186,9 +186,9 @@ def draw_ball_path_animated(
         frame = _draw_gradient_path(frame, bounce[:n], GRAD_MID, GRAD_END, num_segments=n)
 
     # ── Key points (appear when their arc reaches them) ──────────────────────
-    if first_point and progress > 0.0:
-        _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
-                          'First' if show_labels else '')
+    # if first_point and progress > 0.0:
+    #     _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
+    #                       'First' if show_labels else '')
     if pitch_point and progress >= 0.5:
         _draw_event_point(frame, pitch_point, PITCH_POINT_COLOR,
                           'Pitch' if show_labels else '')

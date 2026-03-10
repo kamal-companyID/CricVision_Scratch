@@ -69,6 +69,7 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
             warmup_ball_centers.append(centers)
             if frame_idx == WARMUP_FRAMES - 1:
                 static_ball_map = list(set(build_static_ball_map(warmup_ball_centers)))
+                print(f"Static ball map built with {len(static_ball_map)} positions: {static_ball_map}")
         else:
             detections['ball'] = [
                 d for d in detections['ball']
@@ -99,7 +100,9 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points)
     first_point  = ball_path_points[0] if ball_path_points else None
 
-    # ── Fulltoss guard: impact must come AFTER pitch in the ball path ─────────
+    print(f"First point: {first_point}, Pitch point: {pitch_point}, Impact point: {impact_point}")
+
+    # # ── Fulltoss guard: impact must come AFTER pitch in the ball path ─────────
     if pitch_point and impact_point:
         try:
             pitch_idx_in_path  = ball_path_points.index(pitch_point)
@@ -116,9 +119,12 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
                 print("[fulltoss] Impact detected before pitch — discarding pitch point.")
                 pitch_point = False
 
+    new_impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points)
     path_data = compute_full_path(first_point, pitch_point or None, impact_point or None)
     impact_fidx = _find_impact_frame_idx(ball_path_points, impact_point, frame_ball_map)
 
+
+    print(f"new impact point after fulltoss check: {new_impact_point}")
     # ── Pass 2: write output video with freeze-frame animation ────────────────
     writer = None
     if output_path:
@@ -167,3 +173,4 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     print(f"Pitch point:  {pitch_point}")
     print(f"Impact point: {impact_point}")
     print(f"Done — processed {frame_idx} frames.")
+    print(f"Static ball map: {static_ball_map}")

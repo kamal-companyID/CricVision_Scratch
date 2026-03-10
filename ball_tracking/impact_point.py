@@ -1,6 +1,6 @@
 import math
 
-ANGLE_THRESHOLD = 30  # degrees — minimum direction change to count as an impact
+ANGLE_THRESHOLD = 45  # degrees — minimum direction change to count as an impact
 
 
 def _direction_change(
@@ -20,6 +20,8 @@ def _direction_change(
         if mag1 == 0 or mag2 == 0:
             continue
         cos_a = max(-1.0, min(1.0, (v1[0]*v2[0] + v1[1]*v2[1]) / (mag1 * mag2)))
+
+        print(f"Angle at {p1}: {math.degrees(math.acos(cos_a)):.2f}°")  # Debug: print angle at each point
         if math.degrees(math.acos(cos_a)) >= threshold:
             print(f"Direction change at (fulltoss) : {p1}") if pitch_point is None else print(f"Direction change at: {p1}")
             return p1
@@ -41,10 +43,17 @@ def _pick_latest(
         return b
     if idx_b == -1:
         return a
+    
+    print(f"Comparing points {a} (index {idx_a}) and {b} (index {idx_b}) in path.")
     return a if idx_a >= idx_b else b
 
 
-def find_impact_point(ball_path_points: list[tuple[int, int]], pitch_point: tuple[int, int], ball_in_bat_points: list[tuple[int, int]]) -> tuple[int, int] | bool:
+def find_impact_point(
+        ball_path_points: list[tuple[int, int]],
+        pitch_point: tuple[int, int],
+        ball_in_bat_points: list[tuple[int, int]]
+    ) -> tuple[int, int] | bool:
+    
     if not ball_path_points:
         return False
 
@@ -52,7 +61,8 @@ def find_impact_point(ball_path_points: list[tuple[int, int]], pitch_point: tupl
         direction_change_pt = _direction_change(ball_path_points)
         bat_pt = ball_in_bat_points[-1] if ball_in_bat_points else None
 
-        return _pick_latest(direction_change_pt, bat_pt)
+        print(f"Direction change point (fulltoss): {direction_change_pt}, Last ball-in-bat point: {bat_pt}")
+        return _pick_latest(ball_path_points, direction_change_pt, bat_pt)
 
     try:
         pitch_index = ball_path_points.index(pitch_point)
@@ -65,7 +75,9 @@ def find_impact_point(ball_path_points: list[tuple[int, int]], pitch_point: tupl
             ),
         )
 
-    post_pitch = ball_path_points[pitch_index + 1 :]
+    
+    post_pitch = ball_path_points[pitch_index + 1 :] if pitch_point else ball_path_points
+    print(f"Post-pitch points: {post_pitch}")
 
     return _direction_change(post_pitch, pitch_point) or (ball_in_bat_points[-1] if ball_in_bat_points else False)
     # # Need at least 3 points to measure a direction change (p0→p1 vs p1→p2)

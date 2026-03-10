@@ -3,7 +3,9 @@ from datetime import datetime
 from ball_tracking.orchestrator import process_video
 
 # Set input folder path here
-input_root = r"inputs"  # Change this to your input folder
+input_root = r"inputs"
+# input_root = r"inputs/fulltoss"
+# input_root = r"inputs/edge_cases"
 
 # Create output folder
 today_str = datetime.now().strftime("%Y-%m-%d")
