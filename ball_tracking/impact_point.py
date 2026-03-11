@@ -1,4 +1,7 @@
 import math
+from ball_tracking.logger import get_logger
+
+logger = get_logger(__name__)
 
 # ── Thresholds ──────────────────────────────────────────────────────────────
 ANGLE_CHANGE_THRESHOLD  = 25.0   # degrees — minimum deflection to count as a major angle change
@@ -46,7 +49,7 @@ def _find_angle_changes(
 
         angle = _angle_between(v1, v2)
 
-        print(f"triplet: prev={prev}, curr={curr}, nxt={nxt}, angle={angle:.2f}°")
+        logger.debug("triplet: prev=%s, curr=%s, nxt=%s, angle=%.2f°", prev, curr, nxt, angle)
         if angle >= threshold:
             # First change — always accept
             if not changes:
@@ -107,13 +110,13 @@ def find_impact_point(
             # bat-impact Y-peak (pitch ≈ 2nd angle change), it's a false
             # pitch — treat as full-toss.  Impact = that 2nd change.
             if _distance(pitch_point, second_change) <= PITCH_MATCH_TOLERANCE:
-                print(f"[full-toss guard] pitch {pitch_point} ≈ 2nd angle "
-                      f"change {second_change} — treating as full-toss")
+                logger.info("[full-toss guard] pitch %s ≈ 2nd angle change %s — treating as full-toss",
+                            pitch_point, second_change)
                 return second_change
 
-            print(f"[pitch + 2 changes] first_change={first_change}, second_change={second_change}")
-            print(f"distance between pitch and first change: {_distance(pitch_point, first_change)}")
-            print(f"distance between pitch and second change: {_distance(pitch_point, second_change)}")
+            logger.info("[pitch + 2 changes] first_change=%s, second_change=%s", first_change, second_change)
+            logger.debug("distance pitch→1st=%.1f, pitch→2nd=%.1f",
+                         _distance(pitch_point, first_change), _distance(pitch_point, second_change))
             # Standard bounce: 1st change ≈ pitch, 2nd change = impact
             return second_change
 
@@ -122,12 +125,12 @@ def find_impact_point(
 
             # If the single change IS the pitch, there's no bat impact
             if _distance(pitch_point, only_change) <= PITCH_MATCH_TOLERANCE:
-                print(f"[pitch only] single angle change matches pitch — no bat impact")
+                logger.info("[pitch only] single angle change matches pitch — no bat impact")
                 return bat_pt or False
 
             # Otherwise, the change is the bat impact
-            print(f"[pitch + 1 change] only_change={only_change}")
-            print(f"distance between pitch and only change: {_distance(pitch_point, only_change)}")
+            logger.info("[pitch + 1 change] only_change=%s", only_change)
+            logger.debug("distance pitch→change=%.1f", _distance(pitch_point, only_change))
             return only_change
 
         # 0 angle changes — no bat contact detected
@@ -135,10 +138,9 @@ def find_impact_point(
 
     # ── FULL-TOSS / no pitch ────────────────────────────────────────────
     if num_changes >= 1:
-        print(f"[full-toss] num_changes={num_changes}, angle_changes={angle_changes}")
+        logger.info("[full-toss] num_changes=%d, angle_changes=%s", num_changes, angle_changes)
         return angle_changes[0]
 
     # Absolute fallback: use the last ball-inside-bat-bbox point
-    print(f"[no pitch] num_changes={num_changes}, angle_changes={angle_changes}")
-    print(f"bat_pt={bat_pt}")
+    logger.info("[no pitch] num_changes=%d, bat_pt=%s", num_changes, bat_pt)
     return bat_pt or False

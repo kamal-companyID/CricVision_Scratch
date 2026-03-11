@@ -47,9 +47,9 @@ def detect_stump(frame, confidence: float = 0.5) -> list[dict]:
 
 def detect_all(frame, confidence: float = 0.65) -> dict[str, list[dict]]:
     return {
-        'ball':  detect_ball(frame, confidence),
-        'bat':   detect_bat(frame, confidence),
-        'stump': detect_stump(frame, confidence),
+        'ball':  detect_ball(frame, confidence) if DETECT_BALL else [],
+        'bat':   detect_bat(frame, confidence) if DETECT_BAT else [],
+        'stump': detect_stump(frame, confidence) if DETECT_STUMP else [],
     }
 
 

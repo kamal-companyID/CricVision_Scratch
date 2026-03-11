@@ -1,4 +1,6 @@
 import os
+import tempfile
+import time
 import cv2
 from ball_tracking.detections import detect_all, draw_detections
 from ball_tracking.ball_utils import build_static_ball_map, is_near_static
@@ -6,6 +8,9 @@ from ball_tracking.pitch_point import find_pitch_point
 from ball_tracking.impact_point import find_impact_point
 from ball_tracking.ball_path import compute_full_path
 from ball_tracking.drawing import draw_ball_path, draw_ball_path_animated
+from ball_tracking.logger import get_logger
+
+logger = get_logger(__name__)
 
 WARMUP_FRAMES = 2
 STATIC_THRESHOLD = 60.0   # must match STATIC_RADIUS in ball_utils
@@ -42,7 +47,7 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
-        print(f"Error opening video file: {video_path}")
+        logger.error("Error opening video file: %s", video_path)
         return
 
     fps    = cap.get(cv2.CAP_PROP_FPS) or 25.0
@@ -50,13 +55,21 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    # ── Pass 1: collect detections + store annotated frames ───────────────────
+    # ── Pass 1: collect detections + write annotated frames to temp video ─────
+    t0 = time.perf_counter()
+
     warmup_ball_centers: list[list[tuple[int, int]]] = []
     static_ball_map: list[tuple[int, int]] = []
     ball_path_points: list[tuple[int, int]] = []
     ball_in_bat_points: list[tuple[int, int]] = []
     frame_ball_map: dict[int, tuple[int, int]] = {}   # frame_idx → ball centre
-    annotated_frames: list = []                        # stored annotated frames
+
+    # Write annotated frames to a temporary video instead of storing in RAM
+    temp_fd, temp_path = tempfile.mkstemp(suffix='.avi')
+    os.close(temp_fd)
+    temp_writer = cv2.VideoWriter(
+        temp_path, cv2.VideoWriter_fourcc(*'MJPG'), fps, (width, height),
+    )
 
     frame_idx = 0
     tracked_frames = 0   # counts frames added to ball_path_points
@@ -72,7 +85,7 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
             warmup_ball_centers.append(centers)
             if frame_idx == WARMUP_FRAMES - 1:
                 static_ball_map = build_static_ball_map(warmup_ball_centers)
-                print(f"Static ball map built with {len(static_ball_map)} positions: {static_ball_map}")
+                logger.info("Static ball map built with %d positions: %s", len(static_ball_map), static_ball_map)
         else:
             # Apply stricter confidence for the first INITIAL_CONF_FRAMES tracked frames
             min_conf = INITIAL_CONF_THRESHOLD if tracked_frames < INITIAL_CONF_FRAMES else confidence
@@ -97,17 +110,21 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
                     if bat['x1'] <= cx <= bat['x2'] and bat['y1'] <= cy <= bat['y2']:
                         ball_in_bat_points.append((cx, cy))
 
-        annotated_frames.append(draw_detections(frame, detections))
+        temp_writer.write(draw_detections(frame, detections))
         frame_idx += 1
 
     cap.release()
+    temp_writer.release()
+
+    t1 = time.perf_counter()
+    logger.info("Pass 1 (detection): %.2f s — %d frames", t1 - t0, frame_idx)
 
     # ── Compute key points & physics path ─────────────────────────────────────
     pitch_point  = find_pitch_point(ball_path_points) 
     impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points) or (ball_in_bat_points[-1] if ball_in_bat_points else None) or ball_path_points[-1] if ball_path_points else None
     first_point  = ball_path_points[0] if ball_path_points else None
 
-    print(f"First point: {first_point}, Pitch point: {pitch_point}, Impact point: {impact_point}")
+    logger.info("First point: %s, Pitch point: %s, Impact point: %s", first_point, pitch_point, impact_point)
 
     # # ── Fulltoss guard: impact must come AFTER pitch in the ball path ─────────
     if pitch_point and impact_point:
@@ -123,26 +140,23 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
         if pitch_idx_in_path is not None and impact_idx_in_path is not None:
             if impact_idx_in_path <= pitch_idx_in_path:
                 # Impact before pitch → fulltoss, discard pitch
-                print("[fulltoss] Impact detected before pitch — discarding pitch point.")
+                logger.info("[fulltoss] Impact detected before pitch — discarding pitch point.")
                 pitch_point = False
 
-    new_impact_point = None
-    path_data = None
-    impact_fidx = None
-    
     if not pitch_point and impact_point:
         new_impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points) or (ball_in_bat_points[-1] if ball_in_bat_points else None) or ball_path_points[-1] if ball_path_points else None
-        path_data = compute_full_path(first_point, pitch_point or None, new_impact_point or None)
-        impact_fidx = _find_impact_frame_idx(ball_path_points, new_impact_point, frame_ball_map)
-        print(f"new impact point after fulltoss check: {new_impact_point}")
-        
+        logger.info("new impact point after fulltoss check: %s", new_impact_point)
+
     path_data = compute_full_path(first_point, pitch_point or None, impact_point or None)
     impact_fidx = _find_impact_frame_idx(ball_path_points, impact_point, frame_ball_map)
 
+    t2 = time.perf_counter()
+    logger.info("Computation: %.2f s", t2 - t1)
 
     # ── Pass 2: write output video with freeze-frame animation ────────────────
     writer = None
     if output_path:
+        temp_cap = cv2.VideoCapture(temp_path)
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
@@ -150,7 +164,11 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
         freeze_frames = int(fps * FREEZE_DURATION)  # how many frames = 1 sec
         path_drawn = False                           # flipped once freeze done
 
-        for idx, aframe in enumerate(annotated_frames):
+        for idx in range(frame_idx):
+            ret, aframe = temp_cap.read()
+            if not ret:
+                break
+
             # After the freeze is over, stamp the path onto every remaining frame
             if path_drawn:
                 aframe = draw_ball_path(
@@ -176,16 +194,26 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
                     writer.write(overlay)
                 path_drawn = True
 
+        temp_cap.release()
         writer.release()
+
+    # Clean up temporary file
+    try:
+        os.unlink(temp_path)
+    except OSError:
+        pass
+
+    t3 = time.perf_counter()
+    logger.info("Pass 2 (writing): %.2f s", t3 - t2)
 
     cv2.destroyAllWindows()
 
-    print(f"\n--- Results for {video_path} ---")
-    print(f"total ball detections: {len(ball_path_points)}")
-    print(f"valid ball detections (after filtering static): {ball_path_points}")
-    print(f"ball points inside bat bbox: {ball_in_bat_points}")
-    print(f"First point:  {first_point}")
-    print(f"Pitch point:  {pitch_point}")
-    print(f"Impact point: {impact_point}")
-    print(f"Done — processed {frame_idx} frames.")
-    print(f"Static ball map: {static_ball_map}")
+    logger.info("--- Results for %s ---", video_path)
+    logger.info("total ball detections: %d", len(ball_path_points))
+    logger.debug("valid ball detections (after filtering static): %s", ball_path_points)
+    logger.debug("ball points inside bat bbox: %s", ball_in_bat_points)
+    logger.info("First point:  %s", first_point)
+    logger.info("Pitch point:  %s", pitch_point)
+    logger.info("Impact point: %s", impact_point)
+    logger.info("Done — processed %d frames in %.2f s total.", frame_idx, t3 - t0)
+    logger.debug("Static ball map: %s", static_ball_map)

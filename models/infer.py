@@ -1,12 +1,12 @@
 """infer — YOLO model loading and inference wrapper."""
 
-import logging
-
 import numpy as np
 import torch
 from ultralytics import YOLO
 
-log: logging.Logger = logging.getLogger(__name__)
+from ball_tracking.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class Inference:
@@ -24,7 +24,7 @@ class Inference:
         try:
             device: str = "cuda" if torch.cuda.is_available() else "cpu"
             self.model = YOLO(model_path).to(device)
-            print(f"Model loaded on {device.upper()}: {model_path}")
+            logger.info("Model loaded on %s: %s", device.upper(), model_path)
         except Exception as exc:
             raise RuntimeError(f"Failed to load YOLO model: {exc}") from exc
 

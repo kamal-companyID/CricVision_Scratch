@@ -1,4 +1,7 @@
 import math
+from ball_tracking.logger import get_logger
+
+logger = get_logger(__name__)
 
 # FOR STATIC BALLS
 
@@ -37,5 +40,5 @@ def build_static_ball_map(
             if not is_near_static((cx, cy), static_positions, cluster_radius):
                 static_positions.append((cx, cy))
 
-    print(f"Identified {len(static_positions)} static ball positions: {static_positions}")
+    logger.debug("Identified %d static ball positions: %s", len(static_positions), static_positions)
     return static_positions
