@@ -9,14 +9,12 @@ from ball_tracking.impact_point import find_impact_point
 from ball_tracking.ball_path import compute_full_path
 from ball_tracking.drawing import draw_ball_path, draw_ball_path_animated
 from ball_tracking.logger import get_logger
+from ball_tracking.config import (
+    WARMUP_FRAMES, STATIC_THRESHOLD, FREEZE_DURATION,
+    INITIAL_CONF_THRESHOLD, INITIAL_CONF_FRAMES,
+)
 
 logger = get_logger(__name__)
-
-WARMUP_FRAMES = 2
-STATIC_THRESHOLD = 60.0   # must match STATIC_RADIUS in ball_utils
-FREEZE_DURATION = 1.0            # seconds to freeze after impact frame
-INITIAL_CONF_THRESHOLD = 0.80   # min confidence required for first 3 tracked frames
-INITIAL_CONF_FRAMES    = 3      # how many frames the stricter threshold applies
 
 
 def _find_impact_frame_idx(
