@@ -7,9 +7,11 @@ from ball_tracking.impact_point import find_impact_point
 from ball_tracking.ball_path import compute_full_path
 from ball_tracking.drawing import draw_ball_path, draw_ball_path_animated
 
-WARMUP_FRAMES = 15
-STATIC_THRESHOLD = 15.0
+WARMUP_FRAMES = 2
+STATIC_THRESHOLD = 60.0   # must match STATIC_RADIUS in ball_utils
 FREEZE_DURATION = 1.0            # seconds to freeze after impact frame
+INITIAL_CONF_THRESHOLD = 0.80   # min confidence required for first 3 tracked frames
+INITIAL_CONF_FRAMES    = 3      # how many frames the stricter threshold applies
 
 
 def _find_impact_frame_idx(
@@ -57,6 +59,7 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     annotated_frames: list = []                        # stored annotated frames
 
     frame_idx = 0
+    tracked_frames = 0   # counts frames added to ball_path_points
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -68,11 +71,15 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
             centers = [(d['cx'], d['cy']) for d in detections['ball']]
             warmup_ball_centers.append(centers)
             if frame_idx == WARMUP_FRAMES - 1:
-                static_ball_map = list(set(build_static_ball_map(warmup_ball_centers)))
+                static_ball_map = build_static_ball_map(warmup_ball_centers)
+                print(f"Static ball map built with {len(static_ball_map)} positions: {static_ball_map}")
         else:
+            # Apply stricter confidence for the first INITIAL_CONF_FRAMES tracked frames
+            min_conf = INITIAL_CONF_THRESHOLD if tracked_frames < INITIAL_CONF_FRAMES else confidence
             detections['ball'] = [
                 d for d in detections['ball']
-                if not is_near_static((d['cx'], d['cy']), static_ball_map, STATIC_THRESHOLD)
+                if d['confidence'] >= min_conf
+                and not is_near_static((d['cx'], d['cy']), static_ball_map, STATIC_THRESHOLD)
             ]
             if len(detections['ball']) > 1:
                 detections['ball'] = [max(detections['ball'], key=lambda d: d['confidence'])]
@@ -80,6 +87,7 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
                 pt = (d['cx'], d['cy'])
                 ball_path_points.append(pt)
                 frame_ball_map[frame_idx] = pt
+                tracked_frames += 1
 
             bats = detections['bat']
             if bats:
@@ -95,11 +103,13 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     cap.release()
 
     # ── Compute key points & physics path ─────────────────────────────────────
-    pitch_point  = find_pitch_point(ball_path_points)
-    impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points)
+    pitch_point  = find_pitch_point(ball_path_points) 
+    impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points) or (ball_in_bat_points[-1] if ball_in_bat_points else None) or ball_path_points[-1] if ball_path_points else None
     first_point  = ball_path_points[0] if ball_path_points else None
 
-    # ── Fulltoss guard: impact must come AFTER pitch in the ball path ─────────
+    print(f"First point: {first_point}, Pitch point: {pitch_point}, Impact point: {impact_point}")
+
+    # # ── Fulltoss guard: impact must come AFTER pitch in the ball path ─────────
     if pitch_point and impact_point:
         try:
             pitch_idx_in_path  = ball_path_points.index(pitch_point)
@@ -116,8 +126,19 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
                 print("[fulltoss] Impact detected before pitch — discarding pitch point.")
                 pitch_point = False
 
+    new_impact_point = None
+    path_data = None
+    impact_fidx = None
+    
+    if not pitch_point and impact_point:
+        new_impact_point = find_impact_point(ball_path_points, pitch_point, ball_in_bat_points) or (ball_in_bat_points[-1] if ball_in_bat_points else None) or ball_path_points[-1] if ball_path_points else None
+        path_data = compute_full_path(first_point, pitch_point or None, new_impact_point or None)
+        impact_fidx = _find_impact_frame_idx(ball_path_points, new_impact_point, frame_ball_map)
+        print(f"new impact point after fulltoss check: {new_impact_point}")
+        
     path_data = compute_full_path(first_point, pitch_point or None, impact_point or None)
     impact_fidx = _find_impact_frame_idx(ball_path_points, impact_point, frame_ball_map)
+
 
     # ── Pass 2: write output video with freeze-frame animation ────────────────
     writer = None
@@ -167,3 +188,4 @@ def process_video(video_path: str, output_path: str | None = None, confidence: f
     print(f"Pitch point:  {pitch_point}")
     print(f"Impact point: {impact_point}")
     print(f"Done — processed {frame_idx} frames.")
+    print(f"Static ball map: {static_ball_map}")

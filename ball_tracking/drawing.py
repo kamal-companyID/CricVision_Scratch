@@ -12,23 +12,21 @@ import cv2
 import numpy as np
 
 # ── Adaptive-scale config ─────────────────────────────────────────────────────
-DRAW_REF_SIZE  = 720        # reference dimension (px) — scale = 1.0 at this
-DRAW_SCALE_MIN = 0.4
-DRAW_SCALE_MAX = 2.5
+DRAW_REF_SIZE  = 1080
+DRAW_SCALE_MIN = 0.6
+DRAW_SCALE_MAX = 1.6
 
 # ── Gradient endpoints (BGR) ──────────────────────────────────────────────────
-# Delivery: cyan → yellow       Bounce: yellow → magenta
-GRAD_START = (255, 255,   0)    # cyan
-GRAD_MID   = (0,   255, 255)    # yellow  (shared junction at pitch point)
-GRAD_END   = (255,   0, 255)    # magenta
+GRAD_START = (255, 255, 255)
+GRAD_END   = (255, 200, 0)
 
 # ── Key-point colours (BGR) ───────────────────────────────────────────────────
-FIRST_POINT_COLOR  = (255, 80,   0)   # blue
-PITCH_POINT_COLOR  = (0,  140, 255)   # orange
+# FIRST_POINT_COLOR  = (255, 80,   0)   # blue
+PITCH_POINT_COLOR  = (255,  0, 0)   # blue
 IMPACT_POINT_COLOR = (0,    0, 255)   # red
 
 # ── Path alpha (transparency) ────────────────────────────────────────────────
-PATH_ALPHA = 0.85
+PATH_ALPHA = 0.8
 
 
 # ── Scale helper ──────────────────────────────────────────────────────────────
@@ -37,6 +35,22 @@ def _get_draw_scale(frame: np.ndarray) -> float:
     """Return a multiplier that keeps drawing sizes proportional to resolution."""
     h, w = frame.shape[:2]
     return max(DRAW_SCALE_MIN, min(min(h, w) / float(DRAW_REF_SIZE), DRAW_SCALE_MAX))
+
+
+def _merge_path_segments(path_data: dict) -> list[tuple[int, int]]:
+    """Return a continuous path from the delivery and bounce segments."""
+    delivery = path_data.get('delivery') or []
+    bounce = path_data.get('bounce') or []
+
+    if delivery and bounce:
+        if delivery[-1] == bounce[0]:
+            return [*delivery, *bounce[1:]]
+        return [*delivery, *bounce]
+    if delivery:
+        return delivery
+    if bounce:
+        return bounce
+    return []
 
 
 # ── Colour interpolation ─────────────────────────────────────────────────────
@@ -59,8 +73,6 @@ def _lerp_color(
 def _draw_gradient_path(
     frame: np.ndarray,
     points: list[tuple[int, int]],
-    color_start: tuple[int, int, int],
-    color_end:   tuple[int, int, int],
     alpha: float = PATH_ALPHA,
     num_segments: int | None = None,
 ) -> np.ndarray:
@@ -72,16 +84,15 @@ def _draw_gradient_path(
         return frame
 
     scale = _get_draw_scale(frame)
-    thickness = max(2, int(9 * scale))
+    thickness = max(2, int(6 * scale))
     overlay = frame.copy()
 
     seg_count = min(num_segments, len(points)) if num_segments is not None else len(points)
-    divisor = max(1, seg_count - 1)
 
     for i in range(1, seg_count):
-        t = i / divisor
-        color = _lerp_color(color_start, color_end, t)
-        cv2.line(overlay, points[i - 1], points[i], color, thickness, cv2.LINE_AA)
+        t = i / seg_count
+        color = _lerp_color(GRAD_START, GRAD_END, t)
+        cv2.line(overlay, points[i - 1], points[i], color, thickness)
 
     return cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
 
@@ -97,26 +108,26 @@ def _draw_event_point(
         return
 
     scale = _get_draw_scale(frame)
-    radius = max(6, int(14 * scale))
-    border = max(1, int(2 * scale))
+    radius = max(4, int(7 * scale))
+    border = max(1, int(1 * scale))
 
     cv2.circle(frame, point, radius, color, -1, cv2.LINE_AA)
     cv2.circle(frame, point, radius, (255, 255, 255), border, cv2.LINE_AA)
 
-    if label:
-        font_scale = 0.55 * scale
-        font_thick = max(1, int(2 * scale))
-        text_x = point[0] + radius + int(5 * scale)
-        text_y = point[1] + int(5 * scale)
-        # Shadow for readability
-        cv2.putText(frame, label,
-                    (text_x + 1, text_y + 1),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_scale,
-                    (0, 0, 0), font_thick + 1, cv2.LINE_AA)
-        cv2.putText(frame, label,
-                    (text_x, text_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_scale,
-                    color, font_thick, cv2.LINE_AA)
+    # if label:
+    #     font_scale = 0.55 * scale
+    #     font_thick = max(1, int(2 * scale))
+    #     text_x = point[0] + radius + int(5 * scale)
+    #     text_y = point[1] + int(5 * scale)
+    #     # Shadow for readability
+    #     cv2.putText(frame, label,
+    #                 (text_x + 1, text_y + 1),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+    #                 (0, 0, 0), font_thick + 1, cv2.LINE_AA)
+    #     cv2.putText(frame, label,
+    #                 (text_x, text_y),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+    #                 color, font_thick, cv2.LINE_AA)
 
 
 # ── High-level composite draws ────────────────────────────────────────────────
@@ -134,17 +145,14 @@ def draw_ball_path(
     Returns the blended frame (alpha compositing means the frame object
     may be replaced — always use the return value).
     """
-    delivery = path_data.get('delivery')
-    bounce   = path_data.get('bounce')
+    full_path = _merge_path_segments(path_data)
 
-    if delivery:
-        frame = _draw_gradient_path(frame, delivery, GRAD_START, GRAD_MID)
-    if bounce:
-        frame = _draw_gradient_path(frame, bounce, GRAD_MID, GRAD_END)
+    if full_path:
+        frame = _draw_gradient_path(frame, full_path)
 
-    if first_point:
-        _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
-                          'First' if show_labels else '')
+    # if first_point:
+    #     _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
+    #                       'First' if show_labels else '')
     if pitch_point:
         _draw_event_point(frame, pitch_point, PITCH_POINT_COLOR,
                           'Pitch' if show_labels else '')
@@ -170,25 +178,36 @@ def draw_ball_path_animated(
     """
     progress = max(0.0, min(1.0, progress))
 
-    delivery = path_data.get('delivery')
-    bounce   = path_data.get('bounce')
+    delivery = path_data.get('delivery') or []
+    bounce = path_data.get('bounce') or []
+    visible_points: list[tuple[int, int]] = []
 
     # ── Delivery arc (progress 0.0 → 0.5) ───────────────────────────────────
     if delivery:
         d_progress = min(1.0, progress / 0.5)
         n = max(2, int(len(delivery) * d_progress))
-        frame = _draw_gradient_path(frame, delivery[:n], GRAD_START, GRAD_MID, num_segments=n)
+        visible_points = delivery[:n]
 
     # ── Bounce arc (progress 0.5 → 1.0) ─────────────────────────────────────
     if bounce and progress > 0.5:
         b_progress = min(1.0, (progress - 0.5) / 0.5)
         n = max(2, int(len(bounce) * b_progress))
-        frame = _draw_gradient_path(frame, bounce[:n], GRAD_MID, GRAD_END, num_segments=n)
+        visible_bounce = bounce[:n]
+        if visible_points and visible_bounce:
+            if visible_points[-1] == visible_bounce[0]:
+                visible_points = [*visible_points, *visible_bounce[1:]]
+            else:
+                visible_points = [*visible_points, *visible_bounce]
+        else:
+            visible_points = visible_bounce
+
+    if visible_points:
+        frame = _draw_gradient_path(frame, visible_points)
 
     # ── Key points (appear when their arc reaches them) ──────────────────────
-    if first_point and progress > 0.0:
-        _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
-                          'First' if show_labels else '')
+    # if first_point and progress > 0.0:
+    #     _draw_event_point(frame, first_point, FIRST_POINT_COLOR,
+    #                       'First' if show_labels else '')
     if pitch_point and progress >= 0.5:
         _draw_event_point(frame, pitch_point, PITCH_POINT_COLOR,
                           'Pitch' if show_labels else '')

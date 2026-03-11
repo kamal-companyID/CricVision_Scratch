@@ -1,102 +1,144 @@
 import math
 
-ANGLE_THRESHOLD = 30  # degrees — minimum direction change to count as an impact
+# ── Thresholds ──────────────────────────────────────────────────────────────
+ANGLE_CHANGE_THRESHOLD  = 25.0   # degrees — minimum deflection to count as a major angle change
+MIN_GAP_BETWEEN_CHANGES = 40.0   # pixels  — prevents noise from creating a false 2nd change
+PITCH_MATCH_TOLERANCE   = 40.0   # pixels  — max distance for pitch to "match" an angle-change point
 
 
-def _first_direction_change(
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+def _distance(p1: tuple[int, int], p2: tuple[int, int]) -> float:
+    """Euclidean distance between two points."""
+    return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
+
+
+def _angle_between(v1: tuple, v2: tuple) -> float:
+    """Angle (degrees) between two 2-D vectors."""
+    m1 = math.hypot(*v1)
+    m2 = math.hypot(*v2)
+    if m1 == 0 or m2 == 0:
+        return 0.0
+    cos_a = (v1[0] * v2[0] + v1[1] * v2[1]) / (m1 * m2)
+    return math.degrees(math.acos(max(-1.0, min(1.0, cos_a))))
+
+
+# ── Core: find up to 2 angle-change points ──────────────────────────────────
+
+def _find_angle_changes(
     points: list[tuple[int, int]],
-    threshold: float = ANGLE_THRESHOLD,
-) -> tuple[int, int] | None:
-    """Return the first point in *points* where the trajectory changes
-    direction by at least *threshold* degrees, or None."""
-    if len(points) < 3:
-        return None
+    threshold: float = ANGLE_CHANGE_THRESHOLD,
+    min_gap: float = MIN_GAP_BETWEEN_CHANGES,
+) -> list[tuple[int, int]]:
+    """Walk consecutive triplets and collect up to 2 points where the
+    trajectory angle changes by more than *threshold* degrees.
+
+    A minimum pixel gap between the two points prevents frame-to-frame
+    noise from producing a false second detection.
+    """
+    changes: list[tuple[int, int]] = []
+
     for i in range(1, len(points) - 1):
-        p0, p1, p2 = points[i - 1], points[i], points[i + 1]
-        v1 = (p1[0] - p0[0], p1[1] - p0[1])
-        v2 = (p2[0] - p1[0], p2[1] - p1[1])
-        mag1, mag2 = math.hypot(*v1), math.hypot(*v2)
-        if mag1 == 0 or mag2 == 0:
-            continue
-        cos_a = max(-1.0, min(1.0, (v1[0]*v2[0] + v1[1]*v2[1]) / (mag1 * mag2)))
-        if math.degrees(math.acos(cos_a)) >= threshold:
-            print(f"Direction change at (fulltoss) : {p1}")
-            return p1
-    return None
+        prev, curr, nxt = points[i - 1], points[i], points[i + 1]
+
+        v1 = (curr[0] - prev[0], curr[1] - prev[1])
+        v2 = (nxt[0]  - curr[0], nxt[1]  - curr[1])
+
+        angle = _angle_between(v1, v2)
+
+        print(f"triplet: prev={prev}, curr={curr}, nxt={nxt}, angle={angle:.2f}°")
+        if angle >= threshold:
+            # First change — always accept
+            if not changes:
+                changes.append(curr)
+            # Second change — only if far enough from the first
+            elif _distance(curr, changes[0]) >= min_gap:
+                changes.append(curr)
+                break                     # we only need 2
+
+    return changes
 
 
-def _pick_latest(
-    path: list[tuple[int, int]],
-    a: tuple[int, int] | None,
-    b: tuple[int, int] | None,
+# ── Public API ───────────────────────────────────────────────────────────────
+
+def find_impact_point(
+    ball_path_points:   list[tuple[int, int]],
+    pitch_point:        tuple[int, int] | None,
+    ball_in_bat_points: list[tuple[int, int]],
 ) -> tuple[int, int] | bool:
-    """Return whichever of *a* / *b* appears later in *path*.
-    If only one is valid, return that.  If neither, return False."""
-    idx_a = path.index(a) if a is not None else -1
-    idx_b = path.index(b) if b is not None else -1
-    if idx_a == -1 and idx_b == -1:
-        return False
-    if idx_a == -1:
-        return b
-    if idx_b == -1:
-        return a
-    return a if idx_a >= idx_b else b
+    """Locate the ball–bat impact point using angle-change analysis.
 
+    Logic (ported from analyzer.py):
+        1. Find up to 2 major angle changes in the trajectory.
+        2. Use the pitch presence + number of angle changes to classify:
 
-def find_impact_point(ball_path_points: list[tuple[int, int]], pitch_point: tuple[int, int], ball_in_bat_points: list[tuple[int, int]]) -> tuple[int, int] | bool:
+           ┌─────────────────────────┬──────────────────────────────────────┐
+           │ Situation               │ Impact point                         │
+           ├─────────────────────────┼──────────────────────────────────────┤
+           │ pitch + 2 angle changes │ 2nd change (with full-toss guard)    │
+           │ pitch + 1 angle change  │ that change (if far enough from      │
+           │                         │ pitch, else no impact)               │
+           │ pitch + 0 angle changes │ no impact detected                   │
+           │ no pitch + any changes  │ 1st change (full-toss / direct hit)  │
+           │ no pitch + 0 changes    │ last bat-bbox point (fallback)       │
+           └─────────────────────────┴──────────────────────────────────────┘
+
+    Returns the impact point, or False if nothing could be determined.
+    """
     if not ball_path_points:
         return False
 
+    # Treat False (from pitch_point.py) the same as None
     if not pitch_point:
-        # Fulltoss — no pitch point.
-        # Candidate 1: first direction change anywhere in the path
-        direction_change_pt = _first_direction_change(ball_path_points)
-        # Candidate 2: last ball centre inside the bat bbox
-        bat_pt = ball_in_bat_points[-1] if ball_in_bat_points else None
+        pitch_point = None
 
-        return _pick_latest(ball_path_points, direction_change_pt, bat_pt)
+    angle_changes = _find_angle_changes(ball_path_points)
+    num_changes   = len(angle_changes)
+    bat_pt        = ball_in_bat_points[-1] if ball_in_bat_points else None
 
-    # Locate the pitch point index in the full path
-    try:
-        pitch_index = ball_path_points.index(pitch_point)
-    except ValueError:
-        # Pitch point may be approximate — find the closest recorded point
-        pitch_index = min(
-            range(len(ball_path_points)),
-            key=lambda i: math.hypot(
-                ball_path_points[i][0] - pitch_point[0],
-                ball_path_points[i][1] - pitch_point[1],
-            ),
-        )
+    # ── PITCHED delivery ────────────────────────────────────────────────
+    if pitch_point:
 
-    # Only examine the trajectory that comes after the pitch
-    post_pitch = ball_path_points[pitch_index + 1 :]
+        if num_changes == 2:
+            first_change  = angle_changes[0]
+            second_change = angle_changes[1]
 
-    # Need at least 3 points to measure a direction change (p0→p1 vs p1→p2)
-    if len(post_pitch) >= 3:
-        for i in range(1, len(post_pitch) - 1):
-            p0, p1, p2 = post_pitch[i - 1], post_pitch[i], post_pitch[i + 1]
+            # Full-toss guard: if the pitch point is actually just the
+            # bat-impact Y-peak (pitch ≈ 2nd angle change), it's a false
+            # pitch — treat as full-toss.  Impact = that 2nd change.
+            if _distance(pitch_point, second_change) <= PITCH_MATCH_TOLERANCE:
+                print(f"[full-toss guard] pitch {pitch_point} ≈ 2nd angle "
+                      f"change {second_change} — treating as full-toss")
+                return second_change
 
-            v1 = (p1[0] - p0[0], p1[1] - p0[1])
-            v2 = (p2[0] - p1[0], p2[1] - p1[1])
+            print(f"[pitch + 2 changes] first_change={first_change}, second_change={second_change}")
+            print(f"distance between pitch and first change: {_distance(pitch_point, first_change)}")
+            print(f"distance between pitch and second change: {_distance(pitch_point, second_change)}")
+            # Standard bounce: 1st change ≈ pitch, 2nd change = impact
+            return second_change
 
-            mag1 = math.hypot(*v1)
-            mag2 = math.hypot(*v2)
+        if num_changes == 1:
+            only_change = angle_changes[0]
 
-            if mag1 == 0 or mag2 == 0:
-                continue
+            # If the single change IS the pitch, there's no bat impact
+            if _distance(pitch_point, only_change) <= PITCH_MATCH_TOLERANCE:
+                print(f"[pitch only] single angle change matches pitch — no bat impact")
+                return bat_pt or False
 
-            # Angle between the two consecutive direction vectors
-            cos_angle = (v1[0] * v2[0] + v1[1] * v2[1]) / (mag1 * mag2)
-            cos_angle = max(-1.0, min(1.0, cos_angle))  # numerical clamp
-            angle_deg = math.degrees(math.acos(cos_angle))
+            # Otherwise, the change is the bat impact
+            print(f"[pitch + 1 change] only_change={only_change}")
+            print(f"distance between pitch and only change: {_distance(pitch_point, only_change)}")
+            return only_change
 
-            if angle_deg >= ANGLE_THRESHOLD:
-                print("Direction change at: ", post_pitch[i])
-                return post_pitch[i]
+        # 0 angle changes — no bat contact detected
+        return bat_pt or False
 
-    # Fallback: if no direction change detected, use first ball-in-bat point
-    if ball_in_bat_points:
-        return ball_in_bat_points[-1]
+    # ── FULL-TOSS / no pitch ────────────────────────────────────────────
+    if num_changes >= 1:
+        print(f"[full-toss] num_changes={num_changes}, angle_changes={angle_changes}")
+        return angle_changes[0]
 
-    return False
+    # Absolute fallback: use the last ball-inside-bat-bbox point
+    print(f"[no pitch] num_changes={num_changes}, angle_changes={angle_changes}")
+    print(f"bat_pt={bat_pt}")
+    return bat_pt or False

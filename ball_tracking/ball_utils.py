@@ -2,10 +2,15 @@ import math
 
 # FOR STATIC BALLS
 
+# Radius used both when building the static map (dedup) and when filtering
+# live detections.  Matches the deployed pipeline.
+STATIC_RADIUS = 60.0
+
+
 def is_near_static(
     point: tuple[int, int],
     static_map: list[tuple[int, int]],
-    threshold: float = 15.0,
+    threshold: float = STATIC_RADIUS,
 ) -> bool:
     px, py = point
     thresh_sq = threshold * threshold
@@ -17,37 +22,20 @@ def is_near_static(
 
 def build_static_ball_map(
     warmup_detections: list[list[tuple[int, int]]],
-    min_frames: int = 2,
-    cluster_radius: float = 15.0,
+    cluster_radius: float = STATIC_RADIUS,
 ) -> list[tuple[int, int]]:
-    
-    all_ball_centers_flattened = [
-        (frame_index, center_x, center_y)
-        for frame_index, ball_centers_in_frame in enumerate(warmup_detections)
-        for center_x, center_y in ball_centers_in_frame
-    ]
+    """Collect every ball position seen during warmup as a static marker.
 
-    static_ball_positions: list[tuple[int, int]] = []
-    
-    is_ball_processed = [False] * len(all_ball_centers_flattened)
+    Each detection is added to the map unless it falls within *cluster_radius*
+    of an already-recorded entry (de-duplication).  No minimum-frame-count
+    requirement — any ball visible during warmup is treated as stationary.
+    """
+    static_positions: list[tuple[int, int]] = []
 
-    for current_index, (frame_index, center_x, center_y) in enumerate(all_ball_centers_flattened):
-        
-        if is_ball_processed[current_index]:
-            continue
-        
-        unique_frames_where_ball_appeared = {frame_index}
-        
-        for other_index, (other_frame_index, other_x, other_y) in enumerate(all_ball_centers_flattened):
-            
-            if other_index == current_index or is_ball_processed[other_index]:
-                continue
-            
-            if math.hypot(center_x - other_x, center_y - other_y) < cluster_radius:
-                unique_frames_where_ball_appeared.add(other_frame_index)
-        
-        if len(unique_frames_where_ball_appeared) >= min_frames:
-            static_ball_positions.append((center_x, center_y))
-            is_ball_processed[current_index] = True
+    for frame_centers in warmup_detections:
+        for cx, cy in frame_centers:
+            if not is_near_static((cx, cy), static_positions, cluster_radius):
+                static_positions.append((cx, cy))
 
-    return static_ball_positions
+    print(f"Identified {len(static_positions)} static ball positions: {static_positions}")
+    return static_positions
