@@ -1,12 +1,10 @@
 import math
 from ball_tracking.logger import get_logger
+from ball_tracking.config import (
+    ANGLE_CHANGE_THRESHOLD, MIN_GAP_BETWEEN_CHANGES, PITCH_MATCH_TOLERANCE,
+)
 
 logger = get_logger(__name__)
-
-# ── Thresholds ──────────────────────────────────────────────────────────────
-ANGLE_CHANGE_THRESHOLD  = 25.0   # degrees — minimum deflection to count as a major angle change
-MIN_GAP_BETWEEN_CHANGES = 40.0   # pixels  — prevents noise from creating a false 2nd change
-PITCH_MATCH_TOLERANCE   = 40.0   # pixels  — max distance for pitch to "match" an angle-change point
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────

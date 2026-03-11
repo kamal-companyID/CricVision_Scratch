@@ -10,23 +10,12 @@ Includes:
 
 import cv2
 import numpy as np
-
-# ── Adaptive-scale config ─────────────────────────────────────────────────────
-DRAW_REF_SIZE  = 1080
-DRAW_SCALE_MIN = 0.6
-DRAW_SCALE_MAX = 1.6
-
-# ── Gradient endpoints (BGR) ──────────────────────────────────────────────────
-GRAD_START = (255, 255, 255)
-GRAD_END   = (255, 200, 0)
-
-# ── Key-point colours (BGR) ───────────────────────────────────────────────────
-# FIRST_POINT_COLOR  = (255, 80,   0)   # blue
-PITCH_POINT_COLOR  = (255,  0, 0)   # blue
-IMPACT_POINT_COLOR = (0,    0, 255)   # red
-
-# ── Path alpha (transparency) ────────────────────────────────────────────────
-PATH_ALPHA = 0.8
+from ball_tracking.config import (
+    DRAW_REF_SIZE, DRAW_SCALE_MIN, DRAW_SCALE_MAX,
+    GRAD_START, GRAD_END,
+    PITCH_POINT_COLOR, IMPACT_POINT_COLOR,
+    PATH_ALPHA,
+)
 
 
 # ── Scale helper ──────────────────────────────────────────────────────────────

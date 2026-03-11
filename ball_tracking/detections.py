@@ -1,15 +1,10 @@
 import cv2
 from models import obj_ball, obj_bat, obj_stump
+from ball_tracking.config import (
+    DETECT_BALL, DETECT_BAT, DETECT_STUMP, DETECTION_COLORS,
+)
 
-DETECT_BALL = True
-DETECT_BAT = True
-DETECT_STUMP = False
-
-_COLORS = {
-    'ball':  (0, 255, 0),
-    'bat':   (255, 128, 0),
-    'stump': (0, 0, 255),
-}
+_COLORS = DETECTION_COLORS
 
 
 def _run(inference_obj, frame, confidence: float) -> list[dict]:

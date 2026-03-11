@@ -18,18 +18,11 @@ Usage::
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-
-# ── Constants ────────────────────────────────────────────────────────────────
-ROOT_LOGGER_NAME = "CricVision"
-LOG_DIR          = "logs"
-LOG_FILE         = os.path.join(LOG_DIR, "cricvision.log")
-MAX_BYTES        = 5 * 1024 * 1024   # 5 MB
-BACKUP_COUNT     = 5
-
-# ── Format strings ───────────────────────────────────────────────────────────
-FILE_FMT    = "[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s"
-CONSOLE_FMT = "[%(asctime)s] [%(levelname)-8s] %(message)s"
-DATE_FMT    = "%Y-%m-%d %H:%M:%S"
+from ball_tracking.config import (
+    ROOT_LOGGER_NAME, LOG_DIR, LOG_FILE,
+    LOG_MAX_BYTES, LOG_BACKUP_COUNT,
+    LOG_FILE_FMT, LOG_CONSOLE_FMT, LOG_DATE_FMT,
+)
 
 # ── Internal state ───────────────────────────────────────────────────────────
 _configured = False
@@ -49,18 +42,18 @@ def _configure_root() -> None:
     # ── Console handler (INFO) ───────────────────────────────────────────
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
-    console.setFormatter(logging.Formatter(CONSOLE_FMT, datefmt=DATE_FMT))
+    console.setFormatter(logging.Formatter(LOG_CONSOLE_FMT, datefmt=LOG_DATE_FMT))
     root.addHandler(console)
 
     # ── File handler (DEBUG, rotating) ───────────────────────────────────
     file_handler = RotatingFileHandler(
         LOG_FILE,
-        maxBytes=MAX_BYTES,
-        backupCount=BACKUP_COUNT,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
         encoding="utf-8",
     )
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(FILE_FMT, datefmt=DATE_FMT))
+    file_handler.setFormatter(logging.Formatter(LOG_FILE_FMT, datefmt=LOG_DATE_FMT))
     root.addHandler(file_handler)
 
     _configured = True

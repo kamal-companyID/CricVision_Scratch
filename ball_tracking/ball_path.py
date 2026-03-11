@@ -1,13 +1,5 @@
 import math
-
-# ── Tunable physics parameters ────────────────────────────────────────────────
-# Each factor is a fraction of the chord length that the arc midpoint is
-# displaced from the straight-line chord (positive = downward in image space).
-DELIVERY_SAG_FACTOR = 0.10   # free-fall: arc sags downward
-BOUNCE_SAG_FACTOR   = 0.12   # bounce:    arc bulges upward (negated internally)
-
-# Default number of sampled curve points
-DEFAULT_N_POINTS = 60
+from ball_tracking.config import DELIVERY_SAG_FACTOR, BOUNCE_SAG_FACTOR, DEFAULT_N_POINTS
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

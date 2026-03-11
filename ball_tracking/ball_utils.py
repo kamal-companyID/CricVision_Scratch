@@ -1,13 +1,8 @@
 import math
 from ball_tracking.logger import get_logger
+from ball_tracking.config import STATIC_RADIUS
 
 logger = get_logger(__name__)
-
-# FOR STATIC BALLS
-
-# Radius used both when building the static map (dedup) and when filtering
-# live detections.  Matches the deployed pipeline.
-STATIC_RADIUS = 60.0
 
 
 def is_near_static(
